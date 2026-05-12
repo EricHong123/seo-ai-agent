@@ -356,6 +356,37 @@ body {
   line-height: 1.7;
 }
 
+/* Drag & drop */
+.chat-messages.drag-over {
+  background: var(--gray-50);
+  outline: 2px dashed var(--gray-300);
+  outline-offset: -8px;
+}
+.chat-messages.drag-over::after {
+  content: '释放文件以上传至知识库';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  font-size: 15px;
+  color: var(--gray-400);
+  pointer-events: none;
+}
+
+/* File upload button */
+.btn-upload {
+  background: none;
+  border: none;
+  color: var(--gray-400);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 14px 4px;
+  line-height: 1;
+  transition: color var(--transition);
+  flex-shrink: 0;
+}
+.btn-upload:hover { color: var(--black); }
+.btn-upload input[type=file] { display: none; }
+
 /*━━━━━━━━━━━━━━━━━━━━━━━━
   Input Area
   ━━━━━━━━━━━━━━━━━━━━━━━━*/
@@ -507,11 +538,33 @@ body {
   </div>
 
   <div class="sidebar-section">
+    <h3>生成文件 <a class="kb-add" style="margin-left:8px" onclick="refreshFiles()">刷新</a></h3>
+    <div id="fileList">
+      <div style="color:var(--gray-400);font-size:12px;padding:8px 0">加载中...</div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>Skills</h3>
+    <button class="btn-block" onclick="invokeSkill('pptx')">PPT 生成</button>
+    <button class="btn-block" onclick="invokeSkill('excel')">Excel 自动化</button>
+    <button class="btn-block" onclick="invokeSkill('browser')">浏览器自动化</button>
+    <button class="btn-block" onclick="invokeSkill('seo')">SEO Agent</button>
+  </div>
+
+  <div class="sidebar-section">
     <h3>快捷任务</h3>
     <button class="btn-block" onclick="quickTask('keyword')">关键词研究</button>
     <button class="btn-block" onclick="quickTask('serp')">SERP 分析</button>
     <button class="btn-block" onclick="quickTask('write')">撰写文章</button>
     <button class="btn-block" onclick="quickTask('report')">周报</button>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>API 配置 <a class="kb-add" style="margin-left:8px" onclick="showSettings()">编辑</a></h3>
+    <div id="settingsSummary" style="font-size:11px;color:var(--gray-400);line-height:1.8">
+      加载中...
+    </div>
   </div>
 </aside>
 
@@ -519,9 +572,12 @@ body {
 <main class="main">
   <div class="chat-header">
     <h2>对话</h2>
-    <div class="status-row">
+    <div style="display:flex;align-items:center;gap:20px">
+      <button class="btn-text" onclick="clearChatHistory()" style="font-size:11px">清空</button>
+      <div class="status-row">
       <span class="status-dot" id="statusDot"></span>
       <span id="statusText">检查中...</span>
+    </div>
     </div>
   </div>
 
@@ -537,7 +593,9 @@ body {
   </div>
 
   <div class="chat-input-area">
-    <textarea class="chat-input" id="chatInput" placeholder="描述你的 SEO 任务..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
+    <button class="btn-upload" title="上传文件" onclick="document.getElementById('fileInput').click()">+</button>
+    <input type="file" id="fileInput" style="display:none" multiple onchange="handleFileSelect(event)">
+    <textarea class="chat-input" id="chatInput" placeholder="描述你的 SEO 任务...或拖拽文件到对话区" rows="1" onkeydown="handleKeyDown(event)"></textarea>
     <button class="btn-send" id="sendBtn" onclick="sendMessage()">发送</button>
   </div>
 </main>
@@ -567,6 +625,46 @@ body {
   </div>
 </div>
 
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal" style="width:520px;max-height:80vh;overflow-y:auto">
+    <h3>API 配置</h3>
+    <p style="font-size:12px;color:var(--gray-400);margin-bottom:20px">配置后保存到 .env，重启服务器生效。留空则使用 Mock 模式。</p>
+
+    <div style="margin-bottom:20px">
+      <label style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px">LLM</label>
+      <select class="modal-input" id="setDefaultLlm" style="margin-bottom:8px">
+        <option value="deepseek">DeepSeek</option>
+        <option value="claude">Claude</option>
+      </select>
+      <input type="password" class="modal-input" id="setDeepseekKey" placeholder="DeepSeek API Key" style="margin-bottom:8px">
+      <input type="password" class="modal-input" id="setAnthropicKey" placeholder="Anthropic API Key (Claude)" style="margin-bottom:8px">
+      <input type="password" class="modal-input" id="setOpenaiKey" placeholder="OpenAI API Key (Embeddings)">
+    </div>
+
+    <div style="margin-bottom:20px">
+      <label style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px">Google Search Console</label>
+      <input type="text" class="modal-input" id="setGscCreds" placeholder="Service Account JSON 文件路径" style="margin-bottom:8px">
+      <input type="text" class="modal-input" id="setGscSite" placeholder="GSC 站点 URL（如 https://www.example.com）">
+    </div>
+
+    <div style="margin-bottom:20px">
+      <label style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px">PageSpeed Insights</label>
+      <input type="text" class="modal-input" id="setPagespeedKey" placeholder="API Key（可选，免费额度 50K/天）">
+    </div>
+
+    <div style="margin-bottom:24px">
+      <label style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px">SEMrush</label>
+      <input type="text" class="modal-input" id="setSemrushKey" placeholder="SEMrush API Key">
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-text" onclick="hideSettings()">取消</button>
+      <button class="btn-send" style="font-size:12px;padding:10px 24px" onclick="saveSettings()">保存</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   State
@@ -580,7 +678,10 @@ let isRunning = false;
 document.addEventListener('DOMContentLoaded', () => {
   checkHealth();
   refreshKB();
+  refreshFiles();
   loadProjects();
+  loadSettings();
+  loadChatHistory();
 });
 
 /*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -752,14 +853,49 @@ async function sendMessage() {
   refreshKB();
 }
 
-function addMessage(role, content) {
+function addMessage(role, content, save = true) {
   const container = document.getElementById('chatMessages');
   const div = document.createElement('div');
   div.className = `message ${role}`;
   div.innerHTML = role === 'agent' ? renderMarkdown(content) : escapeHtml(content);
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
+  if (save) persistMessage(role, content);
   return String(Date.now());
+}
+
+function persistMessage(role, content) {
+  const key = `chat_${currentProject}`;
+  let msgs = [];
+  try { msgs = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
+  msgs.push({ role, content, time: Date.now() });
+  // Keep last 200 messages max
+  if (msgs.length > 200) msgs = msgs.slice(-200);
+  localStorage.setItem(key, JSON.stringify(msgs));
+}
+
+function loadChatHistory() {
+  const key = `chat_${currentProject}`;
+  let msgs = [];
+  try { msgs = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) { return; }
+  if (!msgs.length) return;
+
+  const empty = document.querySelector('.empty-state');
+  if (empty) empty.remove();
+
+  for (const m of msgs) {
+    addMessage(m.role, m.content, false); // don't re-save
+  }
+}
+
+function clearChatHistory() {
+  const key = `chat_${currentProject}`;
+  localStorage.removeItem(key);
+  document.getElementById('chatMessages').innerHTML = `
+    <div class="empty-state">
+      <div class="icon">—</div>
+      <p>对话已清空</p>
+    </div>`;
 }
 
 function addThinking() {
@@ -910,6 +1046,82 @@ async function clearKB() {
 }
 
 /*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Settings
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+async function loadSettings() {
+  try {
+    const r = await fetch('/settings');
+    const s = await r.json();
+    document.getElementById('setDeepseekKey').value = s.deepseek_api_key;
+    document.getElementById('setAnthropicKey').value = s.anthropic_api_key;
+    document.getElementById('setOpenaiKey').value = s.openai_api_key;
+    document.getElementById('setDefaultLlm').value = s.default_llm || 'deepseek';
+    document.getElementById('setGscCreds').value = s.google_credentials_file || '';
+    document.getElementById('setGscSite').value = s.gsc_site_url || '';
+    document.getElementById('setPagespeedKey').value = s.pagespeed_api_key || '';
+    document.getElementById('setSemrushKey').value = s.semrush_api_key || '';
+    updateSettingsSummary(s);
+  } catch(e) {}
+}
+
+function updateSettingsSummary(s) {
+  const el = document.getElementById('settingsSummary');
+  const parts = [];
+  if (s.deepseek_api_key) parts.push('DeepSeek ✓');
+  if (s.anthropic_api_key) parts.push('Claude ✓');
+  if (s.openai_api_key) parts.push('Embeddings ✓');
+  if (s.google_credentials_file) parts.push('GSC ✓');
+  if (s.gsc_site_url) parts.push('GSC Site ✓');
+  if (s.pagespeed_api_key) parts.push('PageSpeed ✓');
+  if (s.semrush_api_key) parts.push('SEMrush ✓');
+  el.innerHTML = parts.length ? parts.join('<br>') : '未配置 API';
+}
+
+function showSettings() {
+  document.getElementById('settingsModal').classList.add('active');
+  loadSettings();
+}
+
+function hideSettings() {
+  document.getElementById('settingsModal').classList.remove('active');
+}
+
+async function saveSettings() {
+  const data = {
+    deepseek_api_key: document.getElementById('setDeepseekKey').value.trim(),
+    anthropic_api_key: document.getElementById('setAnthropicKey').value.trim(),
+    openai_api_key: document.getElementById('setOpenaiKey').value.trim(),
+    default_llm: document.getElementById('setDefaultLlm').value,
+    google_credentials_file: document.getElementById('setGscCreds').value.trim(),
+    gsc_site_url: document.getElementById('setGscSite').value.trim(),
+    pagespeed_api_key: document.getElementById('setPagespeedKey').value.trim(),
+    semrush_api_key: document.getElementById('setSemrushKey').value.trim(),
+  };
+
+  try {
+    const r = await fetch('/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await r.json();
+    hideSettings();
+
+    if (result.status === 'saved') {
+      addMessage('agent', `<span class="tool-badge">settings</span> 配置已保存到 .env（${result.updated_keys.length} 项）。重启服务器后生效。`);
+    } else {
+      addMessage('agent', `<span class="tool-badge">settings</span> 无变更。`);
+    }
+
+    // Update summary
+    const r2 = await fetch('/settings');
+    updateSettingsSummary(await r2.json());
+  } catch(e) {
+    addMessage('agent', `<span style="color:#cc3333">保存失败: ${escapeHtml(e.message)}</span>`);
+  }
+}
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Projects
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
 async function loadProjects() {
@@ -934,6 +1146,13 @@ async function loadProjects() {
 function switchProject() {
   currentProject = document.getElementById('projectSelect').value;
   refreshKB();
+  // Reload chat for this project
+  document.getElementById('chatMessages').innerHTML = `
+    <div class="empty-state">
+      <div class="icon">—</div>
+      <p>SEO AI Agent 已就绪</p>
+    </div>`;
+  loadChatHistory();
 }
 
 /* Project creation */
@@ -973,6 +1192,20 @@ async function createNewProject() {
 /*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Quick Tasks
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+async function invokeSkill(skill) {
+  const prompts = {
+    pptx: '/pptx ',
+    excel: '/excel ',
+    browser: '/browser ',
+    seo: '',
+  };
+  const input = document.getElementById('chatInput');
+  input.value = prompts[skill] || '';
+  input.focus();
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+}
+
 function quickTask(type) {
   const tasks = {
     keyword: '研究以下关键词的搜索量和竞争度：',
@@ -992,7 +1225,102 @@ document.addEventListener('DOMContentLoaded', () => {
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 140) + 'px';
   });
+
+  // Drag & drop on chat area
+  const chatArea = document.getElementById('chatMessages');
+  chatArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    chatArea.classList.add('drag-over');
+  });
+  chatArea.addEventListener('dragleave', () => {
+    chatArea.classList.remove('drag-over');
+  });
+  chatArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    chatArea.classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (files.length) uploadFiles(files);
+  });
 });
+
+/* File upload */
+function handleFileSelect(event) {
+  const files = event.target.files;
+  if (files.length) uploadFiles(files);
+  event.target.value = '';
+}
+
+async function uploadFiles(files) {
+  const fileList = Array.from(files);
+  for (const file of fileList) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('project_id', currentProject);
+
+    addMessage('user', `📎 ${file.name} (${formatSize(file.size)})`, false);
+
+    try {
+      const r = await fetch('/kb/upload', { method: 'POST', body: formData });
+      const result = await r.json();
+
+      if (result.status === 'duplicate') {
+        addMessage('agent', `<span class="tool-badge">kb</span> ${file.name} 已存在，跳过`, false);
+      } else if (result.status === 'ok') {
+        addMessage('agent', `<span class="tool-badge">kb ✓</span> ${file.name} — ${result.chunk_count || 0} 块, ${result.token_count || 0} tokens, 标签: ${(result.tags || []).join(', ') || 'none'}`, false);
+        persistMessage('user', `📎 ${file.name}`);
+        persistMessage('agent', `<span class="tool-badge">kb ✓</span> ${file.name} 已入库`);
+      } else {
+        addMessage('agent', `<span style="color:#cc3333">上传失败: ${result.detail || '未知错误'}</span>`, false);
+      }
+    } catch(e) {
+      addMessage('agent', `<span style="color:#cc3333">上传失败: ${e.message}</span>`, false);
+    }
+  }
+  refreshKB();
+}
+
+async function refreshFiles() {
+  const container = document.getElementById('fileList');
+  try {
+    const r = await fetch('/api/skills/files');
+    const data = await r.json();
+    const files = data.files || [];
+    if (!files.length) {
+      container.innerHTML = '<div style="color:var(--gray-400);font-size:12px;padding:8px 0">暂无文件</div>';
+      return;
+    }
+    container.innerHTML = files.map(f => `
+      <div class="kb-file">
+        <div class="name">
+          <span style="margin-right:4px">${iconForExt(f.ext)}</span>
+          <a href="/api/skills/files/${encodeURIComponent(f.name)}" download style="color:var(--black);text-decoration:none">${escapeHtml(f.name)}</a>
+        </div>
+        <div class="meta">${f.size_formatted} · ${timeAgo(f.modified)}</div>
+      </div>
+    `).join('');
+  } catch(e) {
+    container.innerHTML = '<div style="color:var(--gray-400);font-size:12px">加载失败</div>';
+  }
+}
+
+function iconForExt(ext) {
+  const map = {'.pptx':'📊','.xlsx':'📈','.png':'🖼️','.jpg':'🖼️','.pdf':'📄','.csv':'📋','.json':'📦'};
+  return map[ext] || '📎';
+}
+
+function timeAgo(ts) {
+  const diff = (Date.now() / 1000) - ts;
+  if (diff < 60) return '刚刚';
+  if (diff < 3600) return `${Math.floor(diff/60)}分钟前`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}小时前`;
+  return `${Math.floor(diff/86400)}天前`;
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(0) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
 </script>
 </body>
 </html>

@@ -26,3 +26,5 @@ Thumbs.db
 .venv/
 venv/
 *.egg
+.agents/
+skills-lock.json

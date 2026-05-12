@@ -28,6 +28,10 @@ fastmcp>=2.0.0
 # Browser Automation (reuse existing browser-harness)
 # browser-harness is on $PATH
 
+# SEO API Integrations
+PyJWT>=2.8.0            # GSC service account auth
+google-auth>=2.30.0     # Google API auth (optional)
+
 # Utilities
 rich>=13.0.0            # CLI formatting
 click>=8.0.0            # CLI framework

@@ -35,7 +35,12 @@ from tools.optimization.internal_linker import make_tool as make_internal_linker
 from tools.optimization.schema_markup import make_tool as make_schema_markup
 from tools.analytics.rank_tracker import make_tool as make_rank_tracker
 from tools.analytics.report_generator import make_tool as make_report_generator
+from tools.analytics.gsc_tool import make_tool as make_gsc_data
+from tools.optimization.pagespeed import make_tool as make_pagespeed
+from tools.research.semrush_tool import make_tool as make_semrush
 from tools.web.search import make_tool as make_web_search
+from tools.skills.generate_pptx import make_tool as make_generate_pptx
+from tools.skills.generate_excel import make_tool as make_generate_excel
 
 
 @dataclass
@@ -82,6 +87,13 @@ class SEOAgent:
         # Analytics tools
         self.registry.register(make_rank_tracker(self.llm))
         self.registry.register(make_report_generator(self.llm))
+        self.registry.register(make_gsc_data(self.llm))
+        # Third-party API tools
+        self.registry.register(make_pagespeed(self.llm))
+        self.registry.register(make_semrush(self.llm))
+        # Skill tools
+        self.registry.register(make_generate_pptx())
+        self.registry.register(make_generate_excel())
         # Web tools
         self.registry.register(make_web_search(self.llm))
 

@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # ChromaDB
     chroma_persist_dir: Path = Path("data/chroma")
 
+    # Third-party SEO APIs
+    google_credentials_file: str = ""  # Path to GSC service account JSON
+    gsc_site_url: str = ""  # e.g. "https://www.example.com" or "sc_domain:example.com"
+    pagespeed_api_key: str = ""  # Google PageSpeed Insights API key (optional, has free quota)
+    semrush_api_key: str = ""
+
     # MCP
     mcp_server_name: str = "seo-ai-agent"
 

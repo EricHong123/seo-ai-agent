@@ -46,6 +46,10 @@ BASE_SYSTEM_PROMPT = """You are an expert Search Engine Optimization (SEO) Speci
 - **rank_tracker**: Keyword position tracking, trend analysis, striking distance opportunities
 - **report_generator**: Weekly/monthly performance reports with executive summary and action items
 
+### Output & Export
+- **generate_pptx**: Create PowerPoint presentations from Markdown content. Separate slides with '---', use '# Title' for headings. Use when the user asks for a presentation, slide deck, or PPT.
+- **generate_excel**: Export data to Excel (.xlsx) files. Pass a JSON array of row objects. Use when the user asks to export data, create a spreadsheet, or generate a table report.
+
 ### Knowledge Base (★ YOUR memory)
 - **kb_search**: Search your stored documents (brand guides, competitor data, past articles, reports)
 - **kb_ingest**: Store valuable analysis and content for future reference
