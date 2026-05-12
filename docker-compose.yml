@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  api:
+    build: .
+    container_name: seo-ai-agent
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    restart: unless-stopped
+    command: uvicorn interfaces.api.main:app --host 0.0.0.0 --port 8000
+
+  # Optional: run scheduler in a separate container
+  scheduler:
+    build: .
+    container_name: seo-ai-agent-scheduler
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    restart: unless-stopped
+    command: python -c "
+import asyncio
+from interfaces.scheduler import start_scheduler
+start_scheduler()
+asyncio.get_event_loop().run_forever()
+"
+    profiles:
+      - full

@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SEO AI Agent</title>
+<style>
+/*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Minimalism Design System
+  Palette: white / black / gray
+  Material: no shadow, no gradient, fine lines only
+  Rhythm: generous whitespace, clear baseline grid
+  Motion: slow, subtle, non-intrusive
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+
+:root {
+  --white: #ffffff;
+  --black: #1a1a1a;
+  --gray-50: #fafafa;
+  --gray-100: #f5f5f5;
+  --gray-200: #ebebeb;
+  --gray-300: #d6d6d6;
+  --gray-400: #adadad;
+  --gray-500: #858585;
+  --gray-600: #5c5c5c;
+  --gray-700: #3d3d3d;
+  --gray-800: #2b2b2b;
+  --accent: #1a1a1a;
+  --accent-dim: #5c5c5c;
+  --accent-subtle: #f0f0f0;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --line: 1px;
+  --radius: 0px;
+  --rhythm: 8px;
+  --w-sidebar: 272px;
+  --transition: 180ms ease;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--black);
+  background: var(--white);
+  height: 100vh;
+  display: flex;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━
+  Sidebar
+  ━━━━━━━━━━━━━━━━━━━━━━━━*/
+
+.sidebar {
+  width: var(--w-sidebar);
+  min-width: var(--w-sidebar);
+  background: var(--gray-50);
+  border-right: var(--line) solid var(--gray-200);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sidebar-header {
+  padding: 32px 28px 28px;
+  border-bottom: var(--line) solid var(--gray-200);
+}
+
+.sidebar-header h1 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--black);
+}
+
+.sidebar-header p {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin-top: 4px;
+  font-weight: 400;
+}
+
+.sidebar-section {
+  padding: 24px 28px;
+  border-bottom: var(--line) solid var(--gray-200);
+}
+
+.sidebar-section h3 {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--gray-400);
+  margin-bottom: 16px;
+}
+
+/* Project select */
+.project-select {
+  width: 100%;
+  padding: 8px 0;
+  background: transparent;
+  border: none;
+  border-bottom: var(--line) solid var(--gray-300);
+  color: var(--black);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  outline: none;
+  border-radius: 0;
+  transition: border-color var(--transition);
+}
+.project-select:focus { border-bottom-color: var(--black); }
+
+/* KB files */
+.kb-file {
+  padding: 10px 0;
+  border-bottom: var(--line) solid var(--gray-100);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.kb-file:last-child { border-bottom: none; }
+.kb-file:hover { color: var(--gray-600); }
+.kb-file .name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-file .meta {
+  color: var(--gray-400);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* KB add link */
+.kb-add {
+  font-size: 11px;
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: color var(--transition);
+  text-decoration: none;
+}
+.kb-add:hover { color: var(--black); }
+
+.kb-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+/* Buttons */
+.btn-text {
+  font-size: 11px;
+  font-family: var(--font-sans);
+  background: none;
+  border: none;
+  color: var(--gray-500);
+  cursor: pointer;
+  padding: 0;
+  transition: color var(--transition);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.btn-text:hover { color: var(--black); }
+.btn-text.danger:hover { color: #cc3333; }
+
+.btn-block {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  background: none;
+  border: none;
+  color: var(--gray-600);
+  cursor: pointer;
+  padding: 6px 0;
+  margin-bottom: 2px;
+  transition: color var(--transition);
+}
+.btn-block:hover { color: var(--black); }
+
+/* Status indicator */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--gray-500);
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gray-400);
+  flex-shrink: 0;
+}
+.status-dot.online { background: #4d9375; }
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━
+  Main Chat Area
+  ━━━━━━━━━━━━━━━━━━━━━━━━*/
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--white);
+}
+
+.chat-header {
+  padding: 28px 40px;
+  border-bottom: var(--line) solid var(--gray-200);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chat-header h2 {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--black);
+  letter-spacing: -0.2px;
+}
+
+/* Messages */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  background: var(--white);
+}
+
+.message {
+  max-width: 82%;
+  font-size: 15px;
+  line-height: 1.7;
+  animation: fadeUp 240ms ease;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* User message — right aligned, subtle bg */
+.message.user {
+  align-self: flex-end;
+  background: var(--gray-100);
+  padding: 16px 24px;
+  border-radius: 2px;
+  color: var(--black);
+}
+
+/* Agent message — left aligned, clean */
+.message.agent {
+  align-self: flex-start;
+  padding: 0;
+  color: var(--black);
+}
+
+/* Agent content typography */
+.message.agent h1 { font-size: 22px; font-weight: 600; margin: 24px 0 12px; letter-spacing: -0.4px; }
+.message.agent h2 { font-size: 18px; font-weight: 600; margin: 20px 0 8px; letter-spacing: -0.3px; }
+.message.agent h3 { font-size: 15px; font-weight: 600; margin: 16px 0 6px; }
+.message.agent p  { margin: 8px 0; }
+.message.agent ul, .message.agent ol { margin: 8px 0; padding-left: 20px; }
+.message.agent li { margin: 4px 0; }
+.message.agent pre {
+  background: var(--gray-50);
+  padding: 20px 24px;
+  margin: 12px 0;
+  overflow-x: auto;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  border-left: 2px solid var(--gray-200);
+}
+.message.agent code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--gray-50);
+  padding: 1px 6px;
+}
+.message.agent pre code { background: none; padding: 0; }
+.message.agent table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 13px;
+}
+.message.agent th {
+  text-align: left;
+  font-weight: 600;
+  padding: 8px 0;
+  border-bottom: 2px solid var(--gray-200);
+  color: var(--gray-500);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.message.agent td {
+  padding: 10px 0;
+  border-bottom: var(--line) solid var(--gray-100);
+  vertical-align: top;
+}
+.message.agent strong { font-weight: 600; }
+.message.agent em   { font-style: italic; }
+.message.agent blockquote {
+  border-left: 2px solid var(--gray-300);
+  padding-left: 20px;
+  margin: 12px 0;
+  color: var(--gray-600);
+}
+
+/* Tool badge */
+.tool-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--gray-500);
+  margin-right: 8px;
+  letter-spacing: 0.2px;
+}
+
+/* Thinking indicator */
+.thinking-msg {
+  align-self: flex-start;
+  color: var(--gray-400);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  color: var(--gray-400);
+  padding: 80px 20px;
+}
+.empty-state .icon {
+  font-size: 40px;
+  margin-bottom: 20px;
+  opacity: 0.6;
+}
+.empty-state p {
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━
+  Input Area
+  ━━━━━━━━━━━━━━━━━━━━━━━━*/
+
+.chat-input-area {
+  padding: 28px 40px 32px;
+  border-top: var(--line) solid var(--gray-200);
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.chat-input {
+  flex: 1;
+  padding: 14px 0;
+  background: transparent;
+  border: none;
+  border-bottom: var(--line) solid var(--gray-200);
+  color: var(--black);
+  font-size: 15px;
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  resize: none;
+  min-height: 28px;
+  max-height: 140px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.chat-input::placeholder { color: var(--gray-400); }
+.chat-input:focus { border-bottom-color: var(--black); }
+
+.btn-send {
+  padding: 14px 28px;
+  background: var(--black);
+  color: var(--white);
+  border: none;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  transition: background var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-send:hover { background: var(--gray-700); }
+.btn-send:disabled {
+  background: var(--gray-300);
+  cursor: not-allowed;
+}
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━
+  Modal
+  ━━━━━━━━━━━━━━━━━━━━━━━━*/
+
+.modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(255,255,255,0.85);
+  z-index: 100;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+
+.modal {
+  background: var(--white);
+  border: var(--line) solid var(--gray-200);
+  padding: 40px;
+  width: 440px;
+  max-width: 90vw;
+}
+
+.modal h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 24px;
+  letter-spacing: -0.2px;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 12px 0;
+  background: transparent;
+  border: none;
+  border-bottom: var(--line) solid var(--gray-200);
+  color: var(--black);
+  font-size: 14px;
+  font-family: var(--font-sans);
+  outline: none;
+  margin-bottom: 24px;
+  transition: border-color var(--transition);
+}
+.modal-input:focus { border-bottom-color: var(--black); }
+.modal-input::placeholder { color: var(--gray-400); }
+
+.modal .btn-row {
+  display: flex;
+  gap: 16px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━
+  Scrollbar
+  ━━━━━━━━━━━━━━━━━━━━━━━━*/
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--gray-200); }
+::-webkit-scrollbar-thumb:hover { background: var(--gray-300); }
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━
+  Responsive
+  ━━━━━━━━━━━━━━━━━━━━━━━━*/
+
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .chat-messages { padding: 24px; }
+  .chat-input-area { padding: 20px 24px; }
+  .message { max-width: 95%; }
+}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1>SEO AI Agent</h1>
+    <p>知识库 · 关键词 · 内容 · 数据</p>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>项目 <a class="kb-add" style="margin-left:8px" onclick="showProjectCreate()">+ 新建</a></h3>
+    <select class="project-select" id="projectSelect" onchange="switchProject()">
+      <option value="default">默认</option>
+    </select>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>知识库 <a class="kb-add" style="margin-left:8px" onclick="showKbUpload()">+ 添加</a></h3>
+    <div id="kbFiles">
+      <div style="color:var(--gray-400);font-size:12px;padding:8px 0">加载中...</div>
+    </div>
+    <div class="kb-actions">
+      <button class="btn-text" onclick="refreshKB()">刷新</button>
+      <button class="btn-text danger" onclick="clearKB()">清空</button>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>快捷任务</h3>
+    <button class="btn-block" onclick="quickTask('keyword')">关键词研究</button>
+    <button class="btn-block" onclick="quickTask('serp')">SERP 分析</button>
+    <button class="btn-block" onclick="quickTask('write')">撰写文章</button>
+    <button class="btn-block" onclick="quickTask('report')">周报</button>
+  </div>
+</aside>
+
+<!-- Main -->
+<main class="main">
+  <div class="chat-header">
+    <h2>对话</h2>
+    <div class="status-row">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">检查中...</span>
+    </div>
+  </div>
+
+  <div class="chat-messages" id="chatMessages">
+    <div class="empty-state">
+      <div class="icon">—</div>
+      <p>SEO AI Agent 已就绪</p>
+      <p style="font-size:13px;color:var(--gray-400);margin-top:8px">
+        输入任务开始，例如：<br>
+        "分析 best standing desk 2026 的 SERP"
+      </p>
+    </div>
+  </div>
+
+  <div class="chat-input-area">
+    <textarea class="chat-input" id="chatInput" placeholder="描述你的 SEO 任务..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
+    <button class="btn-send" id="sendBtn" onclick="sendMessage()">发送</button>
+  </div>
+</main>
+
+<!-- KB Upload Modal -->
+<div class="modal-overlay" id="kbModal">
+  <div class="modal">
+    <h3>添加到知识库</h3>
+    <input type="text" class="modal-input" id="kbPath" placeholder="文件路径或链接">
+    <div class="btn-row">
+      <button class="btn-text" onclick="hideKbUpload()">取消</button>
+      <button class="btn-send" style="font-size:12px;padding:10px 24px" onclick="ingestToKB()">添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- Project Create Modal -->
+<div class="modal-overlay" id="projectModal">
+  <div class="modal">
+    <h3>新建项目</h3>
+    <input type="text" class="modal-input" id="projectName" placeholder="项目名称">
+    <input type="text" class="modal-input" id="projectDesc" placeholder="项目描述（选填）">
+    <div class="btn-row">
+      <button class="btn-text" onclick="hideProjectCreate()">取消</button>
+      <button class="btn-send" style="font-size:12px;padding:10px 24px" onclick="createNewProject()">创建</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  State
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+let currentProject = 'default';
+let isRunning = false;
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Init
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+document.addEventListener('DOMContentLoaded', () => {
+  checkHealth();
+  refreshKB();
+  loadProjects();
+});
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  API
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+const API = {
+  async health() {
+    const r = await fetch('/health');
+    return r.json();
+  },
+  async runAgent(task, projectId) {
+    const r = await fetch('/api/agent/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task, project_id: projectId }),
+    });
+    if (!r.ok) {
+      const err = await r.text();
+      throw new Error(`API 错误 (${r.status}): ${err.substring(0,200)}`);
+    }
+    return r;
+  },
+  async kbList(projectId) {
+    const r = await fetch(`/kb/files?project_id=${encodeURIComponent(projectId || 'default')}`);
+    return r.json();
+  },
+  async kbIngest(path, projectId) {
+    const r = await fetch('/kb/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, project_id: projectId || 'default' }),
+    });
+    if (!r.ok) {
+      const err = await r.text();
+      throw new Error(err.substring(0, 200));
+    }
+    return r.json();
+  },
+  async kbDelete(filename, projectId) {
+    const r = await fetch('/kb/files', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, project_id: projectId || 'default' }),
+    });
+    return r.json();
+  },
+  async listProjects() {
+    try {
+      const r = await fetch('/projects');
+      return r.json();
+    } catch(e) { return []; }
+  },
+  async createProject(name, description) {
+    const r = await fetch('/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description: description || '', target_audience: '', brand_voice: '' }),
+    });
+    if (!r.ok) {
+      const err = await r.text();
+      throw new Error(err.substring(0, 200));
+    }
+    return r.json();
+  },
+};
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Health
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+async function checkHealth() {
+  try {
+    const h = await API.health();
+    const dot = document.getElementById('statusDot');
+    dot.className = 'status-dot online';
+    document.getElementById('statusText').textContent = `v${h.version} · ${h.tools_count} tools`;
+  } catch(e) {
+    document.getElementById('statusDot').className = 'status-dot';
+    document.getElementById('statusText').textContent = '离线';
+  }
+}
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Chat
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+function handleKeyDown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const task = input.value.trim();
+  if (!task || isRunning) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  isRunning = true;
+  document.getElementById('sendBtn').disabled = true;
+
+  const empty = document.querySelector('.empty-state');
+  if (empty) empty.remove();
+
+  addMessage('user', task);
+  const thinkingId = addThinking();
+
+  try {
+    const response = await API.runAgent(task, currentProject);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const msg = JSON.parse(data);
+
+          if (msg.type === 'start') {
+            if (msg.kb_context) {
+              addMessage('agent', `<span style="color:var(--gray-500);font-size:13px">在知识库中找到相关文档</span>`);
+            }
+          }
+
+          if (msg.type === 'thinking') {
+            removeThinking(thinkingId);
+            const tools = msg.tools || [];
+            if (tools.length > 0) {
+              addMessage('agent', `<span class="tool-badge">${tools.join(', ')}</span> ${escapeHtml(msg.content || '')}`);
+            }
+          }
+
+          if (msg.type === 'tool_result') {
+            addMessage('agent', `<span class="tool-badge">${msg.tool}</span> <span style="color:var(--gray-500);font-size:13px">${escapeHtml((msg.result || '').substring(0, 200))}</span>`);
+          }
+
+          if (msg.type === 'done') {
+            removeThinking(thinkingId);
+            if (msg.content) {
+              addMessage('agent', msg.content);
+            }
+          }
+
+          if (msg.type === 'error') {
+            removeThinking(thinkingId);
+            addMessage('agent', `<span style="color:#cc3333">${escapeHtml(msg.content)}</span>`);
+          }
+        } catch(e) {}
+      }
+    }
+  } catch(e) {
+    removeThinking(thinkingId);
+    addMessage('agent', `<span style="color:#cc3333">请求失败： ${escapeHtml(e.message)}</span>`);
+  }
+
+  isRunning = false;
+  document.getElementById('sendBtn').disabled = false;
+  refreshKB();
+}
+
+function addMessage(role, content) {
+  const container = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = `message ${role}`;
+  div.innerHTML = role === 'agent' ? renderMarkdown(content) : escapeHtml(content);
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return String(Date.now());
+}
+
+function addThinking() {
+  const container = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'thinking-msg';
+  div.id = 'thinking-' + Date.now();
+  div.textContent = 'Thinking...';
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div.id;
+}
+
+function removeThinking(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Minimal Markdown Renderer
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+function renderMarkdown(text) {
+  if (!text) return '';
+  let html = escapeHtml(text);
+
+  // Bold **text**
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Italic *text*
+  html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+  // Inline code
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  // Headings
+  html = html.replace(/^#### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Horizontal rule
+  html = html.replace(/^---$/gm, '<hr style="border:none;border-top:1px solid var(--gray-200);margin:24px 0">');
+  // Blockquote
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+  // Bold heading lines (emojis + bold)
+  html = html.replace(/^(📋.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^(📊.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^(📄.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^(✅.+)$/gm, '<h3>$1</h3>');
+  // Tables
+  let lines = html.split('\n');
+  let inTable = false;
+  let tableHtml = '';
+  let result = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isTableRow = line.includes('|') && line.trim().startsWith('|');
+    const isSeparator = /^\|[\s\-:|]+\|$/.test(line);
+
+    if (isTableRow && !isSeparator) {
+      if (!inTable) {
+        inTable = true;
+        tableHtml = '<table>';
+      }
+      const cells = line.split('|').filter(c => c.trim());
+      const tag = i + 1 < lines.length && /^\|[\s\-:|]+\|$/.test(lines[i + 1]) ? 'th' : 'td';
+      tableHtml += '<tr>' + cells.map(c => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
+    } else if (isSeparator) {
+      continue;
+    } else {
+      if (inTable) {
+        tableHtml += '</table>';
+        result.push(tableHtml);
+        tableHtml = '';
+        inTable = false;
+      }
+      result.push(line);
+    }
+  }
+  if (inTable) { tableHtml += '</table>'; result.push(tableHtml); }
+  html = result.join('\n');
+
+  // Paragraphs: double newlines
+  html = html.replace(/\n\n+/g, '<br><br>');
+  html = html.replace(/\n/g, '<br>');
+
+  return html;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Knowledge Base
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+async function refreshKB() {
+  const container = document.getElementById('kbFiles');
+  try {
+    const data = await API.kbList(currentProject);
+    const files = data.files || [];
+    if (files.length === 0) {
+      container.innerHTML = '<div style="color:var(--gray-400);font-size:12px;padding:8px 0">暂无</div>';
+      return;
+    }
+    container.innerHTML = files.map(f => `
+      <div class="kb-file" title="${escapeHtml(f.filename)}">
+        <div class="name">${escapeHtml(f.filename)}</div>
+        <div class="meta">${escapeHtml(f.file_type)} · ${f.chunk_count} chunks</div>
+      </div>
+    `).join('');
+  } catch(e) {
+    container.innerHTML = '<div style="color:#cc3333;font-size:12px">加载失败</div>';
+  }
+}
+
+function showKbUpload() {
+  document.getElementById('kbModal').classList.add('active');
+  document.getElementById('kbPath').focus();
+}
+
+function hideKbUpload() {
+  document.getElementById('kbModal').classList.remove('active');
+  document.getElementById('kbPath').value = '';
+}
+
+async function ingestToKB() {
+  const path = document.getElementById('kbPath').value.trim();
+  if (!path) return;
+  try {
+    const result = await API.kbIngest(path, currentProject);
+    hideKbUpload();
+    refreshKB();
+    addMessage('agent', `<span class="tool-badge">kb_ingest</span> 已添加： ${escapeHtml(result.filename || path)} &mdash; ${result.chunk_count || 0} chunks`);
+  } catch(e) {
+    hideKbUpload();
+    addMessage('agent', `<span style="color:#cc3333">上传失败： ${escapeHtml(e.message)}</span>`);
+  }
+}
+
+async function clearKB() {
+  if (!confirm('确定清空知识库？此操作不可撤销。')) return;
+  const data = await API.kbList(currentProject);
+  const files = data.files || [];
+  for (const f of files) {
+    await API.kbDelete(f.filename, currentProject);
+  }
+  refreshKB();
+}
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Projects
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+async function loadProjects() {
+  try {
+    const projects = await API.listProjects();
+    const select = document.getElementById('projectSelect');
+    // Clear all except default
+    while (select.options.length > 1) select.remove(1);
+    // Add loaded projects
+    projects.forEach(p => {
+      if (p.id === 'default') return;
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      select.appendChild(opt);
+    });
+    // Restore selection
+    if (currentProject) select.value = currentProject;
+  } catch(e) {}
+}
+
+function switchProject() {
+  currentProject = document.getElementById('projectSelect').value;
+  refreshKB();
+}
+
+/* Project creation */
+function showProjectCreate() {
+  document.getElementById('projectModal').classList.add('active');
+  document.getElementById('projectName').focus();
+}
+
+function hideProjectCreate() {
+  document.getElementById('projectModal').classList.remove('active');
+  document.getElementById('projectName').value = '';
+  document.getElementById('projectDesc').value = '';
+}
+
+async function createNewProject() {
+  const name = document.getElementById('projectName').value.trim();
+  if (!name) return;
+  const desc = document.getElementById('projectDesc').value.trim();
+  try {
+    const project = await API.createProject(name, desc);
+    hideProjectCreate();
+    // Add to select and switch
+    const select = document.getElementById('projectSelect');
+    const opt = document.createElement('option');
+    opt.value = project.id;
+    opt.textContent = project.name;
+    select.appendChild(opt);
+    select.value = project.id;
+    currentProject = project.id;
+    refreshKB();
+    addMessage('agent', `<span class="tool-badge">project</span> 项目「${escapeHtml(project.name)}」已创建`);
+  } catch(e) {
+    addMessage('agent', `<span style="color:#cc3333">创建项目失败: ${escapeHtml(e.message)}</span>`);
+  }
+}
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Quick Tasks
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+function quickTask(type) {
+  const tasks = {
+    keyword: '研究以下关键词的搜索量和竞争度：',
+    serp: '分析以下关键词的 SERP：',
+    write: '撰写一篇关于以下主题的 SEO 优化文章：',
+    report: '生成一份周度 SEO 表现报告',
+  };
+  const input = document.getElementById('chatInput');
+  input.value = tasks[type] || '';
+  input.focus();
+}
+
+// Auto-resize textarea
+document.addEventListener('DOMContentLoaded', () => {
+  const textarea = document.getElementById('chatInput');
+  textarea.addEventListener('input', () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 140) + 'px';
+  });
+});
+</script>
+</body>
+</html>
