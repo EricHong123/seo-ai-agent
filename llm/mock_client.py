@@ -3,6 +3,7 @@ Simulates tool-calling behavior by following a predetermined workflow."""
 
 from llm.base import LLMResponse, ToolDef
 from llm.types import Message, ToolCall
+from llm.protocol import LLMClient
 
 # Simple workflow patterns: the mock "knows" which tools to call for common tasks
 WORKFLOW_PATTERNS = [
@@ -26,7 +27,7 @@ def _match_tools(task: str, available: list[str]) -> list[str]:
     return [t for t in defaults if t in available]
 
 
-class MockLLMClient:
+class MockLLMClient(LLMClient):
     def __init__(self):
         self.model = "mock"
         self._call_count = 0

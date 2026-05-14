@@ -1,27 +1,36 @@
 import json
 from memory.structured.models import UserProfile, get_session
+from config.cache import profile_cache, cache_key
 
 
 async def get_profile(user_id: str = "default") -> dict:
+    key = cache_key("profile", user_id)
+    hit = profile_cache.get(key)
+    if hit is not None:
+        return hit
+
     session = get_session()
     profile = session.query(UserProfile).filter_by(id=user_id).first()
+    session.close()
+
     if not profile:
-        session.close()
-        return {
+        result = {
             "preferred_tone": "professional",
             "target_audience": "general",
             "language": "en",
             "taboo_topics": [],
             "style_preferences": {},
         }
-    result = {
-        "preferred_tone": profile.preferred_tone,
-        "target_audience": profile.target_audience,
-        "language": profile.language,
-        "taboo_topics": json.loads(profile.taboo_topics or "[]"),
-        "style_preferences": json.loads(profile.style_preferences or "{}"),
-    }
-    session.close()
+    else:
+        result = {
+            "preferred_tone": profile.preferred_tone,
+            "target_audience": profile.target_audience,
+            "language": profile.language,
+            "taboo_topics": json.loads(profile.taboo_topics or "[]"),
+            "style_preferences": json.loads(profile.style_preferences or "{}"),
+        }
+
+    profile_cache.set(key, result)
     return result
 
 
@@ -40,3 +49,6 @@ async def update_profile(user_id: str = "default", **kwargs):
 
     session.commit()
     session.close()
+    # Invalidate cache
+    key = cache_key("profile", user_id)
+    profile_cache._store.pop(key, None)

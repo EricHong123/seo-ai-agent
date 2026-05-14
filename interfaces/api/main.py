@@ -5,11 +5,13 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 
 from interfaces.api.routes import projects, tasks, articles, analytics, kb_routes, settings_routes, skills_routes
 
 app = FastAPI(title="SEO AI Agent", version="0.1.0")
+
+from interfaces.api.middleware import RateLimitMiddleware, AuthMiddleware
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,6 +25,12 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+# Rate limit — applied before auth to prevent brute-force
+app.add_middleware(RateLimitMiddleware)
+
+# Auth — disabled by default (no API_KEY set = dev mode)
+app.add_middleware(AuthMiddleware)
 
 # Register route modules
 app.include_router(projects.router)
@@ -51,11 +59,54 @@ async def index():
 @app.get("/health")
 async def health():
     from agent.tool_registry import registry
+    checks = _run_health_checks()
     return {
-        "status": "ok",
-        "version": "0.1.0",
+        "status": "ok" if all(checks.values()) else "degraded",
+        "version": "0.2.0",
         "tools_count": len(registry.list_tools()),
+        "checks": checks,
     }
+
+
+@app.get("/ready")
+async def ready():
+    """Readiness probe — fails if critical deps are down."""
+    checks = _run_health_checks()
+    critical = {k: v for k, v in checks.items() if k in ("database", "llm")}
+    if not all(critical.values()):
+        return JSONResponse(status_code=503, content={"status": "not ready", "checks": critical})
+    return {"status": "ready"}
+
+
+def _run_health_checks() -> dict[str, bool]:
+    checks = {}
+
+    # Database
+    try:
+        from memory.structured.models import get_session
+        s = get_session()
+        s.connection().exec_driver_sql("SELECT 1")
+        s.close()
+        checks["database"] = True
+    except Exception:
+        checks["database"] = False
+
+    # LanceDB
+    try:
+        from knowledge_base.vector_store import create_vector_store
+        store = create_vector_store()
+        checks["vector_store"] = True
+    except Exception:
+        checks["vector_store"] = False
+
+    # LLM
+    try:
+        from llm import get_llm_client
+        checks["llm"] = True
+    except Exception:
+        checks["llm"] = False
+
+    return checks
 
 
 @app.post("/api/agent/run")
@@ -90,100 +141,32 @@ async def agent_run(request: Request):
             return
 
         from agent.orchestrator import SEOAgent, AgentContext
-        from agent.system_prompt import build_system_prompt
-        from llm.types import Message
-        from config.settings import settings
 
         agent = SEOAgent()
-        await agent._init()
         ctx = AgentContext(project_id=project_id)
 
-        # Build system prompt
-        from memory.user_profile import get_profile
-        from memory.structured.keyword_memory import get_all_keywords
-        from memory.structured.content_memory import get_recent_articles
-        from memory.structured.step_memory import get_token_usage
+        async def sse_callback(event: dict):
+            yield f"data: {json.dumps(event)}\n\n"
 
-        persona = await get_profile(ctx.user_id)
-        articles = await get_recent_articles(ctx.project_id)
-        keywords = await get_all_keywords(ctx.project_id)
-        usage = await get_token_usage(ctx.project_id)
+        # Use a queue to bridge callback → SSE stream
+        queue = []
 
-        memory_data = {
-            "recent_articles": ", ".join(a.get("title", "") for a in articles[:5]) if articles else "none",
-            "tracked_keywords": ", ".join(k.get("keyword", "") for k in keywords[:10]) if keywords else "none",
-            "total_steps": usage.get("total_steps", 0),
-            "total_tokens": usage.get("total_tokens", 0),
-        }
+        async def on_progress(event: dict):
+            queue.append(json.dumps(event))
 
-        # Auto-RAG
-        kb_context = ""
-        kb_results = await agent.kb.search(task, project_id=ctx.project_id, top_k=settings.kb_default_top_k)
-        if kb_results:
-            lines = []
-            for r in kb_results:
-                src = r.get("metadata", {}).get("filename", "unknown")
-                content = r.get("content", "")[:400]
-                lines.append(f"  [{src}] {content}")
-            kb_context = "\n".join(lines)
+        # Run agent in background, yield from queue
+        import asyncio as _asyncio
+        agent_task = _asyncio.ensure_future(agent.run(task, context=ctx, on_progress=on_progress))
 
-        system = build_system_prompt(persona=persona, memory=memory_data, kb_context=kb_context)
+        last_idx = 0
+        while not agent_task.done() or last_idx < len(queue):
+            while last_idx < len(queue):
+                yield f"data: {queue[last_idx]}\n\n"
+                last_idx += 1
+            if agent_task.done():
+                break
+            await _asyncio.sleep(0.1)
 
-        messages: list[Message] = [Message(role="user", content=task)]
-        max_iterations = 25
-        iteration = 0
-
-        yield f"data: {json.dumps({'type': 'start', 'task': task[:100], 'kb_context': kb_context[:200]})}\n\n"
-
-        while iteration < max_iterations:
-            iteration += 1
-            tools = agent.registry.list_tools()
-
-            response = await agent.llm.chat(messages=messages, tools=tools, system=system)
-
-            if response.tool_calls:
-                yield f"data: {json.dumps({'type': 'thinking', 'content': response.content[:300] if response.content else '', 'tools': [tc.name for tc in response.tool_calls]})}\n\n"
-
-            if not response.tool_calls:
-                messages.append(Message(role="assistant", content=response.content))
-                if len(response.content) > 100:
-                    from tools.skills.export_utils import save_all_formats
-                    save_all_formats(response.content, prefix="final-report")
-                yield f"data: {json.dumps({'type': 'done', 'content': response.content})}\n\n"
-                yield "data: [DONE]\n\n"
-                return
-
-            messages.append(Message(role="assistant", content=response.content, tool_calls=response.tool_calls))
-
-            for tc in response.tool_calls:
-                result_text = await agent.registry.execute(tc.name, tc.args)
-                messages.append(Message(role="tool", content=result_text[:4000], tool_call_id=tc.id))
-                yield f"data: {json.dumps({'type': 'tool_result', 'tool': tc.name, 'result': result_text[:300]})}\n\n"
-
-                # Auto-ingest into KB (tool outputs stay in KB, not as files)
-                if tc.name in ("competitor_audit", "serp_analyzer", "keyword_research",
-                               "rank_tracker", "report_generator", "copywriter",
-                               "outline_generator", "seo_scorer", "readability",
-                               "fact_checker", "internal_linker", "schema_markup"):
-                    if len(result_text) > 200 and "Error" not in result_text:
-                        await agent.kb.ingest_text(result_text, source="tool_output", filename=f"{tc.name}_{ctx.task_id}", project_id=project_id)
-
-                from memory.structured.step_memory import log_step
-                await log_step(
-                    project_id=ctx.project_id, task_id=ctx.task_id,
-                    step_type="tool_call", tool_name=tc.name,
-                    input_summary=json.dumps(tc.args, ensure_ascii=False),
-                    output_summary=result_text[:500],
-                    success="Error" not in result_text,
-                )
-
-        # Save final output
-        final_text = messages[-1].content if messages else ""
-        if len(final_text) > 100:
-            from tools.skills.export_utils import save_all_formats
-            save_all_formats(final_text, prefix="final-report")
-
-        yield f"data: {json.dumps({'type': 'error', 'content': 'Max iterations reached'})}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

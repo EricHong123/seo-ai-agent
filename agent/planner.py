@@ -7,12 +7,9 @@ def generate_task_id() -> str:
 
 def is_terminal(messages: list, llm_response) -> bool:
     """Check if the agent should stop: no more tool calls needed."""
+    # No tool calls = agent is done, regardless of stop_reason variant
     if not llm_response.tool_calls:
-        return llm_response.stop_reason == "end_turn"
-
-    if llm_response.stop_reason == "end_turn":
         return True
-
     return False
 
 

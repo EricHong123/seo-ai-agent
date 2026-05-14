@@ -4,9 +4,10 @@ import httpx
 from config.settings import settings
 from llm.base import LLMResponse, ToolDef
 from llm.types import Message, ToolCall
+from llm.protocol import LLMClient
 
 
-class DeepSeekClient:
+class DeepSeekClient(LLMClient):
     def __init__(self):
         self.api_key = settings.deepseek_api_key
         self.base_url = "https://api.deepseek.com/v1"

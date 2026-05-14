@@ -1,6 +1,7 @@
 import hashlib
 
 from config.settings import settings
+from config.cache import embedding_cache, cache_key
 
 # Lazy OpenAI import
 _openai = None
@@ -39,17 +40,42 @@ class EmbeddingService:
         return False
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        if await self._ensure_client():
-            response = await self._client.embeddings.create(
-                model=self.model, input=texts,
-            )
-            return [d.embedding for d in response.data]
+        # Check cache first
+        results = []
+        uncached_indices = []
+        for i, t in enumerate(texts):
+            key = cache_key("embed", t)
+            hit = embedding_cache.get(key)
+            if hit is not None:
+                results.append((i, hit))
+            else:
+                uncached_indices.append(i)
 
-        # Fallback: deterministic hash-based pseudo-embeddings
-        # Not semantic, but allows the system to function without OpenAI
-        return [_fallback_embedding(t, self.dim) for t in texts]
+        # Fetch uncached embeddings
+        if uncached_indices:
+            uncached_texts = [texts[i] for i in uncached_indices]
+            if await self._ensure_client():
+                response = await self._client.embeddings.create(
+                    model=self.model, input=uncached_texts,
+                )
+                new_embeddings = [d.embedding for d in response.data]
+            else:
+                new_embeddings = [_fallback_embedding(t, self.dim) for t in uncached_texts]
+
+            for idx, emb in zip(uncached_indices, new_embeddings):
+                key = cache_key("embed", texts[idx])
+                embedding_cache.set(key, emb)
+                results.append((idx, emb))
+
+        # Sort back to original order
+        results.sort(key=lambda x: x[0])
+        return [r[1] for r in results]
 
     async def embed_query(self, text: str) -> list[float]:
+        key = cache_key("embed", text)
+        hit = embedding_cache.get(key)
+        if hit is not None:
+            return hit
         results = await self.embed([text])
         return results[0]
 

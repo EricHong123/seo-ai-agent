@@ -1,5 +1,6 @@
 import time
 import json
+import asyncio
 from dataclasses import dataclass, field
 
 from llm import get_llm_client, LLMClient
@@ -42,6 +43,7 @@ from tools.web.search import make_tool as make_web_search
 from tools.skills.generate_pptx import make_tool as make_generate_pptx
 from tools.skills.generate_excel import make_tool as make_generate_excel
 from tools.skills.export_utils import save_all_formats
+from config.logger import log
 
 
 @dataclass
@@ -98,9 +100,15 @@ class SEOAgent:
         # Web tools
         self.registry.register(make_web_search(self.llm))
 
-    async def run(self, task: str, context: AgentContext | None = None) -> str:
+    async def run(self, task: str, context: AgentContext | None = None,
+                  on_progress=None) -> str:
+        """Run the agent with tool-calling loop. Optionally report progress via callback.
+
+        on_progress: async callable(dict) — receives {'type': 'start'|'thinking'|'tool_result'|'done', ...}
+        """
         await self._init()
         ctx = context or AgentContext()
+        log.info(f"Agent start | project={ctx.project_id} task={task[:80]}")
 
         # Build system prompt with persona, memory, and KB context
         persona = await get_profile(ctx.user_id)
@@ -120,6 +128,9 @@ class SEOAgent:
         }
 
         # Auto-RAG: search KB before starting
+        if on_progress:
+            await on_progress({"type": "start", "task": task[:100]})
+
         kb_context = ""
         kb_results = await self.kb.search(task, project_id=ctx.project_id, top_k=settings.kb_default_top_k)
         if kb_results:
@@ -148,16 +159,27 @@ class SEOAgent:
                 system=system,
             )
             latency = int((time.time() - t0) * 1000)
-            total_tokens += response.usage.get("input_tokens", 0) + response.usage.get("output_tokens", 0)
+            log.debug(f"LLM call | iter={iteration} latency={latency}ms "
+                      f"tools={[tc.name for tc in response.tool_calls]} "
+                      f"stop={response.stop_reason}")
 
             if response.content:
                 total_tokens += len(response.content) // 4  # rough token estimate
 
             if not response.tool_calls:
                 messages.append(Message(role="assistant", content=response.content))
+                if on_progress:
+                    await on_progress({"type": "done", "content": response.content})
                 if is_terminal(messages, response):
                     break
                 continue
+
+            if on_progress:
+                await on_progress({
+                    "type": "thinking",
+                    "content": response.content[:300] if response.content else "",
+                    "tools": [tc.name for tc in response.tool_calls],
+                })
 
             # Process tool calls — append ONE assistant msg with both content and tool_calls
             messages.append(Message(
@@ -170,6 +192,13 @@ class SEOAgent:
                 t_t0 = time.time()
                 result_text = await self.registry.execute(tc.name, tc.args)
                 t_latency = int((time.time() - t_t0) * 1000)
+
+                if on_progress:
+                    await on_progress({
+                        "type": "tool_result",
+                        "tool": tc.name,
+                        "result": result_text[:300],
+                    })
 
                 messages.append(Message(
                     role="tool",
@@ -189,17 +218,19 @@ class SEOAgent:
                     success="Error" not in result_text,
                 )
 
-                # Auto-ingest valuable results into KB (not file export — too noisy)
+                # Auto-ingest into KB — fire-and-forget, don't block the loop
                 if tc.name in ("competitor_audit", "serp_analyzer", "keyword_research",
                                "rank_tracker", "report_generator", "copywriter",
                                "outline_generator", "seo_scorer", "readability",
                                "fact_checker", "internal_linker", "schema_markup"):
                     if len(result_text) > 200 and "Error" not in result_text:
-                        await self.kb.ingest_text(
-                            result_text,
-                            source="tool_output",
-                            filename=f"{tc.name}_{ctx.task_id}",
-                            project_id=ctx.project_id,
+                        asyncio.create_task(
+                            self.kb.ingest_text(
+                                result_text,
+                                source="tool_output",
+                                filename=f"{tc.name}_{ctx.task_id}",
+                                project_id=ctx.project_id,
+                            )
                         )
 
             if is_terminal(messages, response):

@@ -18,4 +18,4 @@ async def get_llm_client(mock: bool = False):
     return ClaudeClient()
 
 
-LLMClient = ClaudeClient | DeepSeekClient | MockLLMClient
+from llm.protocol import LLMClient  # Re-export the Protocol

@@ -1,13 +1,14 @@
 import json
-from anthropic import AsyncAnthropic, AsyncAnthropicBedrock
+from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam, ToolParam
 
 from config.settings import settings
 from llm.base import LLMResponse, ToolDef
 from llm.types import Message, ToolCall
+from llm.protocol import LLMClient
 
 
-class ClaudeClient:
+class ClaudeClient(LLMClient):
     def __init__(self):
         self.client = AsyncAnthropic(api_key=settings.anthropic_api_key)
         self.model = settings.llm_model

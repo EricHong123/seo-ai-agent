@@ -1,54 +1,51 @@
-"""Vector store with automatic fallback for environments without ChromaDB."""
+"""Vector store — LanceDB primary, SimpleVectorStore fallback.
+
+LanceDB: pure Python, no system deps, built-in ANN (IVF_PQ).
+Works on Python 3.14+ where ChromaDB (pydantic v1) is broken.
+"""
 
 import uuid
-
+import json
+from pathlib import Path
 from config.settings import settings
 
-# Lazy import ChromaDB — it may not be available on Python 3.14+
-_chromadb = None
+_lancedb = None
 
 
-def _get_chromadb():
-    global _chromadb
-    if _chromadb is None:
+def _get_lancedb():
+    global _lancedb
+    if _lancedb is None:
         try:
-            import chromadb
-            _chromadb = chromadb
+            import lancedb
+            _lancedb = lancedb
         except Exception:
-            _chromadb = False
-    return _chromadb if _chromadb is not False else None
+            _lancedb = False
+    return _lancedb if _lancedb is not False else None
 
 
 class SimpleVectorStore:
-    """In-memory fallback vector store — uses cosine similarity of raw vectors.
-    Works without ChromaDB. Good enough for MVP/testing with small KB sizes."""
+    """In-memory fallback — cosine similarity brute force. OK for small KB."""
 
     def __init__(self):
         self._collections: dict[str, list[dict]] = {}
 
-    def _collection(self, project_id: str) -> list[dict]:
+    def _col(self, project_id: str) -> list[dict]:
         name = f"kb_{project_id}"
         if name not in self._collections:
             self._collections[name] = []
         return self._collections[name]
 
-    async def add(
-        self, project_id: str, chunks: list[str],
-        embeddings: list[list[float]], file_id: str,
-        metadata: dict | None = None,
-    ):
-        col = self._collection(project_id)
+    async def add(self, project_id: str, chunks: list[str],
+                  embeddings: list[list[float]], file_id: str,
+                  metadata: dict | None = None):
+        col = self._col(project_id)
         for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
-            m = {"file_id": file_id, "chunk_index": i}
-            if metadata:
-                m.update(metadata)
+            m = {"file_id": file_id, "chunk_index": i, **(metadata or {})}
             col.append({"id": str(uuid.uuid4()), "content": chunk, "embedding": emb, "metadata": m})
 
-    async def search(
-        self, project_id: str, query_embedding: list[float],
-        top_k: int = 5, file_type_filter: str | None = None,
-    ) -> list[dict]:
-        col = self._collection(project_id)
+    async def search(self, project_id: str, query_embedding: list[float],
+                     top_k: int = 5, file_type_filter: str | None = None) -> list[dict]:
+        col = self._col(project_id)
 
         def _cosine(a, b):
             dot = sum(x * y for x, y in zip(a, b))
@@ -61,102 +58,132 @@ class SimpleVectorStore:
             if file_type_filter and file_type_filter != "all":
                 if item.get("metadata", {}).get("file_type") != file_type_filter:
                     continue
-            score = _cosine(query_embedding, item["embedding"])
-            scored.append((score, item))
+            scored.append((_cosine(query_embedding, item["embedding"]), item))
 
         scored.sort(key=lambda x: x[0], reverse=True)
-        out = []
-        for score, item in scored[:top_k]:
-            out.append({
-                "id": item["id"],
-                "content": item["content"],
-                "metadata": item["metadata"],
-                "score": score,
-            })
-        return out
+        return [{"id": s[1]["id"], "content": s[1]["content"],
+                 "metadata": s[1]["metadata"], "score": s[0]} for s in scored[:top_k]]
 
     async def delete_by_file(self, project_id: str, file_id: str):
-        col = self._collection(project_id)
-        self._collections[f"kb_{project_id}"] = [
-            item for item in col if item.get("metadata", {}).get("file_id") != file_id
-        ]
+        key = f"kb_{project_id}"
+        if key in self._collections:
+            self._collections[key] = [
+                i for i in self._collections[key]
+                if i.get("metadata", {}).get("file_id") != file_id
+            ]
 
     async def list_files(self, project_id: str) -> list[dict]:
-        col = self._collection(project_id)
         seen = {}
-        for item in col:
+        for item in self._col(project_id):
             fid = item.get("metadata", {}).get("file_id")
             if fid and fid not in seen:
                 seen[fid] = {"file_id": fid, "filename": item.get("metadata", {}).get("filename", fid)}
         return list(seen.values())
 
 
-class ChromaVectorStore:
-    """ChromaDB-backed vector store — full-featured, persistent."""
+class LanceDBStore:
+    """LanceDB-backed vector store — persistent, ANN-indexed, production-ready."""
 
     def __init__(self):
-        chromadb = _get_chromadb()
-        if not chromadb:
-            raise RuntimeError("ChromaDB not available")
-        from chromadb.config import Settings as ChromaSettings
-        self.client = chromadb.PersistentClient(
-            path=str(settings.chroma_persist_dir),
-            settings=ChromaSettings(anonymized_telemetry=False),
-        )
+        lancedb = _get_lancedb()
+        if not lancedb:
+            raise RuntimeError("LanceDB not available")
+        db_path = Path(settings.chroma_persist_dir) / "lancedb"
+        db_path.mkdir(parents=True, exist_ok=True)
+        self.db = lancedb.connect(str(db_path))
 
-    def _collection(self, project_id: str):
-        name = f"kb_{project_id}"
-        return self.client.get_or_create_collection(name=name)
+    def _table_name(self, project_id: str) -> str:
+        return f"kb_{project_id}"
 
-    async def add(self, project_id, chunks, embeddings, file_id, metadata=None):
-        col = self._collection(project_id)
-        ids = [str(uuid.uuid4()) for _ in chunks]
-        metas = [{"file_id": file_id, "chunk_index": i, **(metadata or {})} for i in range(len(chunks))]
-        col.add(ids=ids, embeddings=embeddings, documents=chunks, metadatas=metas)
-
-    async def search(self, project_id, query_embedding, top_k=5, file_type_filter=None):
-        col = self._collection(project_id)
-        where = None
-        if file_type_filter and file_type_filter != "all":
-            where = {"file_type": file_type_filter}
-        results = col.query(
-            query_embeddings=[query_embedding], n_results=top_k,
-            where=where, include=["documents", "metadatas", "distances"],
-        )
-        out = []
-        ids = results.get("ids", [[]])[0]
-        docs = results.get("documents", [[]])[0]
-        metas = results.get("metadatas", [[]])[0]
-        dists = results.get("distances", [[]])[0]
-        for i in range(len(ids)):
-            out.append({
-                "id": ids[i], "content": docs[i],
-                "metadata": metas[i] or {},
-                "score": 1.0 - (dists[i] if dists else 0.0),
-            })
-        return out
-
-    async def delete_by_file(self, project_id, file_id):
-        col = self._collection(project_id)
-        results = col.get(where={"file_id": file_id})
-        if results["ids"]:
-            col.delete(ids=results["ids"])
-
-    async def list_files(self, project_id):
-        col = self._collection(project_id)
-        results = col.get(include=["metadatas"])
-        seen = {}
-        for meta in (results.get("metadatas") or []):
-            fid = meta.get("file_id")
-            if fid and fid not in seen:
-                seen[fid] = {"file_id": fid, "filename": meta.get("filename", fid)}
-        return list(seen.values())
-
-
-def create_vector_store() -> SimpleVectorStore | ChromaVectorStore:
-    if _get_chromadb():
+    def _ensure_table(self, project_id: str):
+        import pyarrow as pa
+        name = self._table_name(project_id)
         try:
-            return ChromaVectorStore()
+            return self.db.open_table(name)
+        except Exception:
+            schema = pa.schema([
+                pa.field("id", pa.string()),
+                pa.field("content", pa.string()),
+                pa.field("embedding", pa.list_(pa.float32(), 1536)),
+                pa.field("file_id", pa.string()),
+                pa.field("chunk_index", pa.int32()),
+                pa.field("filename", pa.string()),
+                pa.field("file_type", pa.string()),
+            ])
+            return self.db.create_table(name, schema=schema)
+
+    async def add(self, project_id: str, chunks: list[str],
+                  embeddings: list[list[float]], file_id: str,
+                  metadata: dict | None = None):
+        import pyarrow as pa
+        table = self._ensure_table(project_id)
+        data = []
+        for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
+            data.append({
+                "id": str(uuid.uuid4()),
+                "content": chunk,
+                "embedding": [float(x) for x in emb],
+                "file_id": file_id,
+                "chunk_index": i,
+                "filename": (metadata or {}).get("filename", ""),
+                "file_type": (metadata or {}).get("file_type", "unknown"),
+            })
+        table.add(data)
+
+    async def search(self, project_id: str, query_embedding: list[float],
+                     top_k: int = 5, file_type_filter: str | None = None) -> list[dict]:
+        table = self._ensure_table(project_id)
+        query_vec = [float(x) for x in query_embedding]
+
+        query = table.search(query_vec).limit(top_k)
+        if file_type_filter and file_type_filter != "all":
+            query = query.where(f"file_type = '{file_type_filter}'")
+
+        try:
+            results = query.to_list()
+        except Exception:
+            return []
+
+        return [{
+            "id": r.get("id", ""),
+            "content": r.get("content", ""),
+            "metadata": {
+                "file_id": r.get("file_id", ""),
+                "chunk_index": r.get("chunk_index", 0),
+                "filename": r.get("filename", ""),
+                "file_type": r.get("file_type", ""),
+            },
+            "score": r.get("_distance", 1.0),
+        } for r in results]
+
+    async def delete_by_file(self, project_id: str, file_id: str):
+        table = self._ensure_table(project_id)
+        try:
+            table.delete(f"file_id = '{file_id}'")
+        except Exception:
+            pass
+
+    async def list_files(self, project_id: str) -> list[dict]:
+        try:
+            table = self._ensure_table(project_id)
+            # LanceDB doesn't have SELECT DISTINCT — use to_pandas
+            df = table.to_pandas()
+            if df.empty:
+                return []
+            seen = {}
+            for _, row in df.iterrows():
+                fid = row.get("file_id", "")
+                if fid and fid not in seen:
+                    seen[fid] = {"file_id": fid, "filename": row.get("filename", fid)}
+            return list(seen.values())
+        except Exception:
+            return []
+
+
+def create_vector_store():
+    if _get_lancedb():
+        try:
+            return LanceDBStore()
         except Exception:
             pass
     return SimpleVectorStore()

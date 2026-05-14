@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     # API
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    api_key: str = ""  # If set, protects /api/agent/run, /settings, /kb/upload
 
     # Project
     project_root: Path = Path(__file__).parent.parent
