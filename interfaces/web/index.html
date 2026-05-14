@@ -564,6 +564,13 @@ body {
   </div>
 
   <div class="sidebar-section">
+    <h3>分发 <a class="kb-add" style="margin-left:8px" onclick="refreshPublishPanel()">刷新</a></h3>
+    <div id="publishPanel">
+      <div style="color:var(--gray-400);font-size:12px;padding:8px 0">Agent 完成对话后自动出现</div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
     <h3>API 配置 <a class="kb-add" style="margin-left:8px" onclick="showSettings()">编辑</a></h3>
     <div id="settingsSummary" style="font-size:11px;color:var(--gray-400);line-height:1.8">
       加载中...
@@ -682,6 +689,7 @@ document.addEventListener('DOMContentLoaded', () => {
   checkHealth();
   refreshKB();
   refreshFiles();
+  refreshPublishPanel();
   loadProjects();
   loadSettings();
   loadChatHistory();
@@ -855,6 +863,7 @@ async function sendMessage() {
   document.getElementById('sendBtn').disabled = false;
   refreshKB();
   refreshFiles();
+  refreshPublishPanel();
 }
 
 function addMessage(role, content, save = true) {
@@ -1208,6 +1217,62 @@ async function invokeSkill(skill) {
   input.focus();
   input.style.height = 'auto';
   input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+}
+
+/*━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Publish Panel
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━*/
+async function refreshPublishPanel() {
+  const panel = document.getElementById('publishPanel');
+  try {
+    const r = await fetch('/api/content/export/latest?format=sau');
+    if (!r.ok) { panel.innerHTML = '<div style="color:var(--gray-400);font-size:12px;padding:8px 0">暂无内容。先完成 Agent 对话。</div>'; return; }
+    const data = await r.json();
+    const platforms = [
+      { name: '抖音', icon: 'DY', cmd: 'douyin', action: 'upload-video', color: '#111' },
+      { name: 'B站', icon: 'BL', cmd: 'bilibili', action: 'upload', color: '#fb7299' },
+      { name: '小红书', icon: 'XHS', cmd: 'xiaohongshu', action: 'upload-video', color: '#ff2442' },
+      { name: '快手', icon: 'KS', cmd: 'kuaishou', action: 'upload-video', color: '#ff4906' },
+    ];
+
+    panel.innerHTML = `
+      <div style="font-size:12px;color:var(--gray-500);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(data.title)}">
+        最新：${escapeHtml(data.title).substring(0, 40)}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
+        ${platforms.map(p => `
+          <button onclick="showPublishCmd('${p.cmd}','${p.action}','${p.name}')"
+            style="font-size:10px;padding:4px 8px;border:1px solid var(--gray-300);background:var(--white);color:var(--black);cursor:pointer;font-family:var(--font-sans)"
+            onmouseover="this.style.borderColor='${p.color}'"
+            onmouseout="this.style.borderColor='var(--gray-300)'"
+          >${p.icon}</button>
+        `).join('')}
+      </div>
+      <button class="btn-text" style="font-size:10px" onclick="copySauCmd()">复制命令</button>
+    `;
+  } catch(e) {
+    panel.innerHTML = '<div style="color:var(--gray-400);font-size:12px;padding:8px 0">SEO Agent 服务未运行</div>';
+  }
+}
+
+function showPublishCmd(platform, action, name) {
+  const cmd = `sau ${platform} ${action} \\
+  --account YOUR_ACCOUNT \\
+  --file /path/to/video.mp4 \\
+  --content-url http://localhost:8000/api/content/export/latest?format=sau`;
+  addMessage('agent', `<span class="tool-badge">分发 → ${name}</span>
+    <pre style="margin-top:8px">${escapeHtml(cmd)}</pre>
+    <span style="font-size:12px;color:var(--gray-500)">复制后替换 YOUR_ACCOUNT 和视频路径即可使用</span>`);
+}
+
+async function copySauCmd() {
+  const cmd = `sau douyin upload-video --account YOUR_ACCOUNT --file /path/to/video.mp4 --content-url http://localhost:8000/api/content/export/latest?format=sau`;
+  try {
+    await navigator.clipboard.writeText(cmd);
+    addMessage('agent', '<span class="tool-badge">复制 ✓</span> SAU 命令已复制到剪贴板');
+  } catch(e) {
+    showPublishCmd('douyin', 'upload-video', '抖音');
+  }
 }
 
 function quickTask(type) {
