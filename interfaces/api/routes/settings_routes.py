@@ -35,12 +35,26 @@ def _read_env() -> dict[str, str]:
     return result
 
 
+ALLOWED_KEYS = {
+    "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+    "DEFAULT_LLM", "GOOGLE_CREDENTIALS_FILE", "GSC_SITE_URL",
+    "PAGESPEED_API_KEY", "SEMRUSH_API_KEY",
+    "DB_URL", "CHROMA_PERSIST_DIR", "MAX_TOKENS",
+}
+
+
 def _write_env(updates: dict[str, str]):
     current = _read_env()
-    current.update(updates)
+    for key, value in updates.items():
+        if key not in ALLOWED_KEYS:
+            continue  # Reject unknown keys
+        # Strip newlines and other control characters
+        sanitized = value.replace("\n", "").replace("\r", "").replace("\x00", "").strip()
+        current[key] = sanitized
 
     lines = []
-    for key, value in current.items():
+    for key in ALLOWED_KEYS:
+        value = current.get(key, "")
         if value:
             lines.append(f"{key}={value}")
         else:

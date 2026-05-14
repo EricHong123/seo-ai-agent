@@ -189,7 +189,7 @@ class SEOAgent:
                     success="Error" not in result_text,
                 )
 
-                # Auto-ingest valuable results into KB + save as file
+                # Auto-ingest valuable results into KB (not file export — too noisy)
                 if tc.name in ("competitor_audit", "serp_analyzer", "keyword_research",
                                "rank_tracker", "report_generator", "copywriter",
                                "outline_generator", "seo_scorer", "readability",
@@ -201,7 +201,6 @@ class SEOAgent:
                             filename=f"{tc.name}_{ctx.task_id}",
                             project_id=ctx.project_id,
                         )
-                        save_all_formats(result_text, prefix=tc.name)
 
             if is_terminal(messages, response):
                 break

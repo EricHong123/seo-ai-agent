@@ -1,48 +1,16 @@
+"""KB file registry — now backed by shared SQLAlchemy engine (was raw sqlite3)."""
+
 import json
-import sqlite3
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 
-from config.settings import settings
-
-
-DB_PATH = settings.kb_dir / "registry.db"
-
-
-def _conn() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    c = sqlite3.connect(str(DB_PATH))
-    c.row_factory = sqlite3.Row
-    return c
-
-
-def init_db():
-    c = _conn()
-    c.executescript("""
-        CREATE TABLE IF NOT EXISTS kb_files (
-            id TEXT PRIMARY KEY,
-            filename TEXT NOT NULL,
-            file_hash TEXT NOT NULL,
-            file_type TEXT NOT NULL,
-            file_size_bytes INTEGER DEFAULT 0,
-            source TEXT NOT NULL DEFAULT 'user_upload',
-            tags TEXT DEFAULT '[]',
-            chunk_count INTEGER DEFAULT 0,
-            ingested_at TEXT NOT NULL,
-            last_accessed_at TEXT NOT NULL,
-            project_id TEXT NOT NULL DEFAULT 'default'
-        );
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_file_hash ON kb_files(file_hash);
-    """)
-    c.commit()
-    c.close()
+from memory.structured.models import KBFile, get_session, init_db
 
 
 def is_duplicate(file_hash: str) -> bool:
-    c = _conn()
-    row = c.execute("SELECT 1 FROM kb_files WHERE file_hash = ?", (file_hash,)).fetchone()
-    c.close()
+    session = get_session()
+    row = session.query(KBFile).filter_by(file_hash=file_hash).first()
+    session.close()
     return row is not None
 
 
@@ -56,56 +24,92 @@ def add_record(
     file_size_bytes: int = 0,
     tags: list[str] | None = None,
 ) -> str:
+    init_db()
     file_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    c = _conn()
-    c.execute(
-        """INSERT INTO kb_files (id, filename, file_hash, file_type, file_size_bytes, source, tags, chunk_count, ingested_at, last_accessed_at, project_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (file_id, filename, file_hash, file_type, file_size_bytes, source, json.dumps(tags or []), chunk_count, now, now, project_id),
+    now = datetime.now(timezone.utc)
+    session = get_session()
+    record = KBFile(
+        id=file_id,
+        filename=filename,
+        file_hash=file_hash,
+        file_type=file_type,
+        file_size_bytes=file_size_bytes,
+        source=source,
+        tags=json.dumps(tags or []),
+        chunk_count=chunk_count,
+        ingested_at=now,
+        last_accessed_at=now,
+        project_id=project_id,
     )
-    c.commit()
-    c.close()
+    session.add(record)
+    session.commit()
+    session.close()
     return file_id
 
 
 def touch_record(file_id: str):
-    now = datetime.now(timezone.utc).isoformat()
-    c = _conn()
-    c.execute("UPDATE kb_files SET last_accessed_at = ? WHERE id = ?", (now, file_id))
-    c.commit()
-    c.close()
+    session = get_session()
+    record = session.query(KBFile).filter_by(id=file_id).first()
+    if record:
+        record.last_accessed_at = datetime.now(timezone.utc)
+        session.commit()
+    session.close()
 
 
 def delete_record(file_id: str):
-    c = _conn()
-    c.execute("DELETE FROM kb_files WHERE id = ?", (file_id,))
-    c.commit()
-    c.close()
+    session = get_session()
+    session.query(KBFile).filter_by(id=file_id).delete()
+    session.commit()
+    session.close()
 
 
 def list_records(project_id: str = "default") -> list[dict]:
-    c = _conn()
-    rows = c.execute(
-        "SELECT * FROM kb_files WHERE project_id = ? ORDER BY ingested_at DESC",
-        (project_id,),
-    ).fetchall()
-    c.close()
-    return [dict(r) for r in rows]
+    session = get_session()
+    rows = (
+        session.query(KBFile)
+        .filter_by(project_id=project_id)
+        .order_by(KBFile.ingested_at.desc())
+        .all()
+    )
+    result = [
+        {
+            "id": r.id, "filename": r.filename, "file_hash": r.file_hash,
+            "file_type": r.file_type, "file_size_bytes": r.file_size_bytes,
+            "source": r.source, "tags": r.tags, "chunk_count": r.chunk_count,
+            "ingested_at": r.ingested_at.isoformat() if r.ingested_at else None,
+            "last_accessed_at": r.last_accessed_at.isoformat() if r.last_accessed_at else None,
+            "project_id": r.project_id,
+        }
+        for r in rows
+    ]
+    session.close()
+    return result
 
 
 def get_by_filename(filename: str, project_id: str = "default") -> dict | None:
-    c = _conn()
-    row = c.execute(
-        "SELECT * FROM kb_files WHERE filename = ? AND project_id = ?",
-        (filename, project_id),
-    ).fetchone()
-    c.close()
-    return dict(row) if row else None
+    session = get_session()
+    row = session.query(KBFile).filter_by(filename=filename, project_id=project_id).first()
+    result = _row_to_dict(row)
+    session.close()
+    return result
 
 
 def get_by_id(file_id: str) -> dict | None:
-    c = _conn()
-    row = c.execute("SELECT * FROM kb_files WHERE id = ?", (file_id,)).fetchone()
-    c.close()
-    return dict(row) if row else None
+    session = get_session()
+    row = session.query(KBFile).filter_by(id=file_id).first()
+    result = _row_to_dict(row)
+    session.close()
+    return result
+
+
+def _row_to_dict(row) -> dict | None:
+    if row is None:
+        return None
+    return {
+        "id": row.id, "filename": row.filename, "file_hash": row.file_hash,
+        "file_type": row.file_type, "file_size_bytes": row.file_size_bytes,
+        "source": row.source, "tags": row.tags, "chunk_count": row.chunk_count,
+        "ingested_at": row.ingested_at.isoformat() if row.ingested_at else None,
+        "last_accessed_at": row.last_accessed_at.isoformat() if row.last_accessed_at else None,
+        "project_id": row.project_id,
+    }

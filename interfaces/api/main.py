@@ -13,10 +13,15 @@ app = FastAPI(title="SEO AI Agent", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # Register route modules
@@ -155,15 +160,13 @@ async def agent_run(request: Request):
                 messages.append(Message(role="tool", content=result_text[:4000], tool_call_id=tc.id))
                 yield f"data: {json.dumps({'type': 'tool_result', 'tool': tc.name, 'result': result_text[:300]})}\n\n"
 
-                # Auto-ingest + save as downloadable file
+                # Auto-ingest into KB (tool outputs stay in KB, not as files)
                 if tc.name in ("competitor_audit", "serp_analyzer", "keyword_research",
                                "rank_tracker", "report_generator", "copywriter",
                                "outline_generator", "seo_scorer", "readability",
                                "fact_checker", "internal_linker", "schema_markup"):
                     if len(result_text) > 200 and "Error" not in result_text:
                         await agent.kb.ingest_text(result_text, source="tool_output", filename=f"{tc.name}_{ctx.task_id}", project_id=project_id)
-                        from tools.skills.export_utils import save_all_formats
-                        save_all_formats(result_text, prefix=tc.name)
 
                 from memory.structured.step_memory import log_step
                 await log_step(

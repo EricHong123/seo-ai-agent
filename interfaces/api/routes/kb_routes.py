@@ -10,21 +10,40 @@ router = APIRouter(prefix="/kb", tags=["knowledge-base"])
 
 UPLOAD_DIR = Path("data/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
 @router.post("/upload")
 async def kb_upload(file: UploadFile = File(...), project_id: str = Form("default")):
     """Upload a file directly to the knowledge base."""
+    # Validate project_id — no path traversal
+    safe_project = Path(project_id).name
+    if safe_project != project_id or ".." in project_id:
+        raise HTTPException(400, "Invalid project_id")
+
     kb = KnowledgeBase()
 
-    # Save uploaded file to temp location
     safe_name = Path(file.filename or "upload").name
-    dest = UPLOAD_DIR / f"{project_id}_{safe_name}"
+    if safe_name != (file.filename or "upload") or ".." in (file.filename or ""):
+        raise HTTPException(400, "Invalid filename")
+
+    dest = UPLOAD_DIR / f"{safe_project}_{safe_name}"
+
+    # Read with size limit
+    size = 0
     with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_UPLOAD_SIZE:
+                dest.unlink(missing_ok=True)
+                raise HTTPException(413, f"File too large. Max: {MAX_UPLOAD_SIZE // 1024 // 1024} MB")
+            f.write(chunk)
 
     try:
-        result = await kb.ingest_file(str(dest), project_id=project_id)
+        result = await kb.ingest_file(str(dest), project_id=safe_project)
         if result.get("status") == "duplicate":
             dest.unlink(missing_ok=True)
             return {"status": "duplicate", "filename": safe_name}

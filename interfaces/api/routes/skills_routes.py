@@ -271,23 +271,33 @@ async def list_exports():
     return {"files": files}
 
 
+def _safe_filename(filename: str) -> str:
+    """Prevent path traversal — reject any filename containing .. or /."""
+    name = Path(filename).name  # strip any directory components
+    if name != filename or ".." in filename:
+        raise HTTPException(400, "Invalid filename")
+    return name
+
+
 @router.get("/files/{filename}")
 async def download_file(filename: str):
     """Download a generated file."""
-    filepath = EXPORTS_DIR / filename
+    safe = _safe_filename(filename)
+    filepath = EXPORTS_DIR / safe
     if not filepath.exists():
         raise HTTPException(404, "File not found")
-    return FileResponse(str(filepath), filename=filename)
+    return FileResponse(str(filepath), filename=safe)
 
 
 @router.delete("/files/{filename}")
 async def delete_export(filename: str):
     """Delete a generated file."""
-    filepath = EXPORTS_DIR / filename
+    safe = _safe_filename(filename)
+    filepath = EXPORTS_DIR / safe
     if not filepath.exists():
         raise HTTPException(404, "File not found")
     filepath.unlink()
-    return {"status": "deleted", "filename": filename}
+    return {"status": "deleted", "filename": safe}
 
 
 def _format_size(size: int) -> str:
