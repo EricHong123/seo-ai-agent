@@ -93,6 +93,7 @@ PROTECTED_PREFIXES = [
     "/api/skills/browser",
     "/api/skills/files",
     "/analytics",
+    "/api/content",
 ]
 
 # Paths always open (health, docs, UI, basic KB read)

@@ -236,16 +236,22 @@ class SEOAgent:
             if is_terminal(messages, response):
                 break
 
-        # Final synthesis: use only the last few messages to avoid token bloat
-        recent = messages[-8:]  # Last 4 tool cycles max
-        synthesis_prompt = (
-            "Synthesize a comprehensive final answer from the tool results above. "
-            "Include all key data, findings, and recommendations. "
-            "Provide the actual numbers and content — not a summary of what you did."
+        # Final synthesis: collect tool outputs into a clean context
+        tool_outputs = ""
+        for m in messages:
+            if m.role == "tool" and m.content:
+                tool_outputs += f"\n[Tool result] {m.content[:1500]}"
+
+        synthesis = (
+            f"You completed the following research task: \"{task}\"\n\n"
+            f"Tool outputs collected:\n{tool_outputs[:8000]}\n\n"
+            "Write a comprehensive final report. Include all key data (volumes, competition, CPC), "
+            "structured tables, strategy recommendations, and priority rankings. "
+            "Provide actual numbers — do NOT say 'I did X' or summarize what you did. "
+            "This is the final deliverable the user will read."
         )
-        recent.append(Message(role="user", content=synthesis_prompt))
         final_response = await self.llm.chat(
-            messages=recent,
+            messages=[Message(role="user", content=synthesis)],
             tools=[],
             system=system,
         )
