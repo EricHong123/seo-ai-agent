@@ -7,8 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 
-from interfaces.api.routes import projects, tasks, articles, analytics, kb_routes, settings_routes, skills_routes, content_routes
-from interfaces.api.routes.content_routes import store_task_result
+from interfaces.api.routes import projects, tasks, articles, analytics, kb_routes, settings_routes, skills_routes
 
 app = FastAPI(title="SEO AI Agent", version="0.1.0")
 
@@ -41,7 +40,6 @@ app.include_router(analytics.router)
 app.include_router(kb_routes.router)
 app.include_router(settings_routes.router)
 app.include_router(skills_routes.router)
-app.include_router(content_routes.router)
 
 # Mount web UI static files
 web_dir = Path(__file__).parent.parent / "web"
@@ -168,10 +166,6 @@ async def agent_run(request: Request):
             if agent_task.done():
                 break
             await _asyncio.sleep(0.1)
-
-        # Store result for content export pipeline (SAU integration)
-        final_result = agent_task.result()
-        store_task_result(project_id, task, final_result)
 
         yield "data: [DONE]\n\n"
 
