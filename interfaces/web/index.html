@@ -542,6 +542,9 @@ body {
     <div id="fileList">
       <div style="color:var(--gray-400);font-size:12px;padding:8px 0">加载中...</div>
     </div>
+    <div class="kb-actions">
+      <button class="btn-text danger" onclick="clearAllFiles()">清空全部</button>
+    </div>
   </div>
 
   <div class="sidebar-section">
@@ -851,6 +854,7 @@ async function sendMessage() {
   isRunning = false;
   document.getElementById('sendBtn').disabled = false;
   refreshKB();
+  refreshFiles();
 }
 
 function addMessage(role, content, save = true) {
@@ -1289,22 +1293,77 @@ async function refreshFiles() {
       container.innerHTML = '<div style="color:var(--gray-400);font-size:12px;padding:8px 0">暂无文件</div>';
       return;
     }
-    container.innerHTML = files.map(f => `
-      <div class="kb-file">
-        <div class="name">
-          <span style="margin-right:4px">${iconForExt(f.ext)}</span>
-          <a href="/api/skills/files/${encodeURIComponent(f.name)}" download style="color:var(--black);text-decoration:none">${escapeHtml(f.name)}</a>
+
+    // Group by base name (strip extension + timestamp)
+    const groups = {};
+    for (const f of files) {
+      const base = f.name.replace(/-\d{8}-\d{6}\.\w+$/, '').replace(/\.\w+$/, '');
+      if (!groups[base]) groups[base] = [];
+      groups[base].push(f);
+    }
+
+    let html = '';
+    for (const [base, group] of Object.entries(groups)) {
+      const newest = group.reduce((a, b) => a.modified > b.modified ? a : b);
+      const exts = group.map(f => f.ext.replace('.', '').toUpperCase()).join(' · ');
+      html += `
+        <div class="kb-file" style="position:relative">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between">
+            <div style="flex:1;min-width:0">
+              <div class="name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(base)}">
+                ${escapeHtml(base)}
+              </div>
+              <div class="meta">${exts} · ${newest.size_formatted} · ${timeAgo(newest.modified)}</div>
+            </div>
+            <div style="display:flex;gap:2px;flex-shrink:0">
+              ${group.map(f =>
+                `<a href="/api/skills/files/${encodeURIComponent(f.name)}" download
+                    style="color:var(--gray-500);text-decoration:none;font-size:11px;padding:2px 4px;border:1px solid var(--gray-200)"
+                    title="下载 ${f.name}">${iconForExt(f.ext)}</a>`
+              ).join('')}
+              <button onclick="deleteFileGroup('${escapeHtml(base)}', [${group.map(f => `'${escapeHtml(f.name)}'`).join(',')}])"
+                style="background:none;border:none;color:var(--gray-400);cursor:pointer;font-size:14px;padding:0 0 0 6px" title="删除此组">×</button>
+            </div>
+          </div>
         </div>
-        <div class="meta">${f.size_formatted} · ${timeAgo(f.modified)}</div>
-      </div>
-    `).join('');
+      `;
+    }
+    container.innerHTML = html;
   } catch(e) {
     container.innerHTML = '<div style="color:var(--gray-400);font-size:12px">加载失败</div>';
   }
 }
 
+async function deleteFileGroup(base, filenames) {
+  for (const name of filenames) {
+    await fetch(`/api/skills/files/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  }
+  refreshFiles();
+}
+
+async function deleteFile(filename) {
+  try {
+    const r = await fetch(`/api/skills/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+    if (r.ok) {
+      refreshFiles();
+    }
+  } catch(e) {}
+}
+
+async function clearAllFiles() {
+  if (!confirm('确认删除所有生成文件？此操作不可撤销。')) return;
+  try {
+    const r = await fetch('/api/skills/files');
+    const data = await r.json();
+    for (const f of (data.files || [])) {
+      await fetch(`/api/skills/files/${encodeURIComponent(f.name)}`, { method: 'DELETE' });
+    }
+    refreshFiles();
+  } catch(e) {}
+}
+
 function iconForExt(ext) {
-  const map = {'.pptx':'📊','.xlsx':'📈','.png':'🖼️','.jpg':'🖼️','.pdf':'📄','.csv':'📋','.json':'📦'};
+  const map = {'.pptx':'PP','.xlsx':'XL','.png':'PNG','.jpg':'JPG','.pdf':'PDF','.csv':'CSV','.json':'JSON','.md':'MD','.docx':'DOC'};
   return map[ext] || '📎';
 }
 

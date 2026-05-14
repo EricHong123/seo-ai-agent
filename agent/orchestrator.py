@@ -41,6 +41,7 @@ from tools.research.semrush_tool import make_tool as make_semrush
 from tools.web.search import make_tool as make_web_search
 from tools.skills.generate_pptx import make_tool as make_generate_pptx
 from tools.skills.generate_excel import make_tool as make_generate_excel
+from tools.skills.export_utils import save_all_formats
 
 
 @dataclass
@@ -188,8 +189,11 @@ class SEOAgent:
                     success="Error" not in result_text,
                 )
 
-                # Auto-ingest valuable results into KB
-                if tc.name in ("competitor_audit", "serp_analyzer", "keyword_research", "rank_tracker", "report_generator"):
+                # Auto-ingest valuable results into KB + save as file
+                if tc.name in ("competitor_audit", "serp_analyzer", "keyword_research",
+                               "rank_tracker", "report_generator", "copywriter",
+                               "outline_generator", "seo_scorer", "readability",
+                               "fact_checker", "internal_linker", "schema_markup"):
                     if len(result_text) > 200 and "Error" not in result_text:
                         await self.kb.ingest_text(
                             result_text,
@@ -197,6 +201,7 @@ class SEOAgent:
                             filename=f"{tc.name}_{ctx.task_id}",
                             project_id=ctx.project_id,
                         )
+                        save_all_formats(result_text, prefix=tc.name)
 
             if is_terminal(messages, response):
                 break
@@ -214,4 +219,7 @@ class SEOAgent:
             tools=[],
             system=system,
         )
+        # Save final output as downloadable file
+        if len(final_response.content) > 100:
+            save_all_formats(final_response.content, prefix="final-report")
         return final_response.content

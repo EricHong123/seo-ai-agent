@@ -141,6 +141,9 @@ async def agent_run(request: Request):
 
             if not response.tool_calls:
                 messages.append(Message(role="assistant", content=response.content))
+                if len(response.content) > 100:
+                    from tools.skills.export_utils import save_all_formats
+                    save_all_formats(response.content, prefix="final-report")
                 yield f"data: {json.dumps({'type': 'done', 'content': response.content})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
@@ -152,10 +155,15 @@ async def agent_run(request: Request):
                 messages.append(Message(role="tool", content=result_text[:4000], tool_call_id=tc.id))
                 yield f"data: {json.dumps({'type': 'tool_result', 'tool': tc.name, 'result': result_text[:300]})}\n\n"
 
-                # Auto-ingest
-                if tc.name in ("competitor_audit", "serp_analyzer", "keyword_research", "rank_tracker", "report_generator"):
+                # Auto-ingest + save as downloadable file
+                if tc.name in ("competitor_audit", "serp_analyzer", "keyword_research",
+                               "rank_tracker", "report_generator", "copywriter",
+                               "outline_generator", "seo_scorer", "readability",
+                               "fact_checker", "internal_linker", "schema_markup"):
                     if len(result_text) > 200 and "Error" not in result_text:
                         await agent.kb.ingest_text(result_text, source="tool_output", filename=f"{tc.name}_{ctx.task_id}", project_id=project_id)
+                        from tools.skills.export_utils import save_all_formats
+                        save_all_formats(result_text, prefix=tc.name)
 
                 from memory.structured.step_memory import log_step
                 await log_step(
@@ -165,6 +173,12 @@ async def agent_run(request: Request):
                     output_summary=result_text[:500],
                     success="Error" not in result_text,
                 )
+
+        # Save final output
+        final_text = messages[-1].content if messages else ""
+        if len(final_text) > 100:
+            from tools.skills.export_utils import save_all_formats
+            save_all_formats(final_text, prefix="final-report")
 
         yield f"data: {json.dumps({'type': 'error', 'content': 'Max iterations reached'})}\n\n"
         yield "data: [DONE]\n\n"
