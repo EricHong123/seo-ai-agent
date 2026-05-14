@@ -44,6 +44,32 @@ User (CLI / Web UI / MCP / API)
 
 SEO workflows are linear (research → write → publish → track). A bare tool-calling loop (~200 lines) is simpler, more debuggable, and avoids LangChain/CrewAI lock-in.
 
+## Social Auto Upload Integration ★ New
+
+SEO AI Agent integrates with [social-auto-upload](https://github.com/EricHong123/social-auto-upload) (9,000+ stars) for end-to-end content pipelines:
+
+```
+SEO Agent 写文章 → 一键导出 → SAU 发布到抖音/B站/小红书/快手
+```
+
+### Usage
+
+```bash
+# 1. SEO Agent generates content
+curl -X POST http://localhost:8000/api/agent/run \
+  -d '{"task":"写一篇 standing desk 选购指南"}'
+
+# 2. Export for SAU
+curl http://localhost:8000/api/content/export/latest?format=sau
+
+# 3. SAU publishes to Douyin
+sau douyin upload-video --file video.mp4 \
+  --content-url http://localhost:8000/api/content/export/latest?format=sau
+```
+
+### Web UI Publish Panel
+Sidebar `分发` section: one-click copy SAU commands for 抖音/B站/小红书/快手 after each agent task.
+
 ## Features
 
 ### Agent Core
@@ -173,6 +199,14 @@ docker compose up -d
 | `GET` | `/kb/search` | Semantic search |
 | `DELETE` | `/kb/files` | Delete document |
 
+### Content Pipeline ★ New
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/content/export/latest` | Latest task result (JSON, tags, platform hint) |
+| `GET` | `/api/content/export/latest?format=sau` | SAU-compatible flat format |
+| `GET` | `/api/content/export/latest/file` | Download as .md file |
+| `GET` | `/api/content/export/list` | All available exports |
+
 ### Skills & Exports
 | Method | Path | Description |
 |--------|------|-------------|
@@ -242,7 +276,8 @@ seo-ai-agent/
 │   │   ├── main.py                 # App entry + SSE + health
 │   │   ├── middleware.py           # Rate limit + Auth
 │   │   ├── schemas.py              # Pydantic models
-│   │   └── routes/                 # 8 route groups
+│   │   └── routes/                 # 9 route groups
+│   │       ├── content_routes.py   # ★ Content pipeline (SAU bridge)
 │   ├── cli.py                      # CLI (Click + Rich)
 │   ├── web/index.html              # Web UI SPA
 │   └── scheduler.py                # Weekly tasks
