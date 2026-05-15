@@ -103,7 +103,15 @@ async def update_settings(data: SettingsData):
         return {"status": "no_changes"}
 
     _write_env(updates)
-    return {"status": "saved", "updated_keys": list(updates.keys())}
+
+    # Hot-reload: update the global settings singleton immediately
+    from config.settings import settings as global_settings
+    for key, value in updates.items():
+        setting_key = key.lower()
+        if hasattr(global_settings, setting_key):
+            setattr(global_settings, setting_key, value)
+
+    return {"status": "saved", "updated_keys": list(updates.keys()), "hot_reloaded": True}
 
 
 @router.post("/reload")
