@@ -828,17 +828,9 @@ async function sendMessage() {
             }
           }
 
-          if (msg.type === 'thinking') {
-            removeThinking(thinkingId);
-            const tools = msg.tools || [];
-            if (tools.length > 0) {
-              addMessage('agent', `<span class="tool-badge">${tools.join(', ')}</span> ${escapeHtml(msg.content || '')}`);
-            }
-          }
-
-          if (msg.type === 'tool_result') {
-            addMessage('agent', `<span class="tool-badge">${msg.tool}</span> <span style="color:var(--gray-500);font-size:13px">${escapeHtml((msg.result || '').substring(0, 200))}</span>`);
-          }
+          // Intermediate tool logs hidden — only final output shown
+          if (msg.type === 'thinking') {}
+          if (msg.type === 'tool_result') {}
 
           if (msg.type === 'done') {
             removeThinking(thinkingId);
